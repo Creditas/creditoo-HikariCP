@@ -16,12 +16,16 @@
 
 package com.zaxxer.hikari.util;
 
+import javax.sql.DataSource;
+
 import static java.lang.Thread.currentThread;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.net.URI;
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Locale;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -212,5 +216,24 @@ public final class UtilityElf
          thread.setDaemon(daemon);
          return thread;
       }
+   }
+
+   /**
+    * Get Connection HostName.
+    * @return
+    * @throws SQLException
+    */
+   public static String getConnectionHostName(Connection connection) throws SQLException {
+      final String driverPrefix = "jdbc:";
+
+      String url = connection.getMetaData().getURL();
+
+      if(url.startsWith(driverPrefix)) {
+         url = url.substring(driverPrefix.length());
+      }
+
+      String hostName = URI.create(url).getHost();
+
+      return hostName;
    }
 }

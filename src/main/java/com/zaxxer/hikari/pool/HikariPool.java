@@ -20,14 +20,15 @@ import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.health.HealthCheckRegistry;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariPoolMXBean;
+import com.zaxxer.hikari.dns.DnsCheckerService;
+import com.zaxxer.hikari.dns.InetAddressDnsResolver;
 import com.zaxxer.hikari.metrics.MetricsTrackerFactory;
 import com.zaxxer.hikari.metrics.PoolStats;
 import com.zaxxer.hikari.metrics.dropwizard.CodahaleHealthChecker;
 import com.zaxxer.hikari.metrics.dropwizard.CodahaleMetricsTrackerFactory;
 import com.zaxxer.hikari.metrics.micrometer.MicrometerMetricsTrackerFactory;
-import com.zaxxer.hikari.util.ConcurrentBag;
+import com.zaxxer.hikari.util.*;
 import com.zaxxer.hikari.util.ConcurrentBag.IBagStateListener;
-import com.zaxxer.hikari.util.SuspendResumeLock;
 import com.zaxxer.hikari.util.UtilityElf.DefaultThreadFactory;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
@@ -39,15 +40,7 @@ import java.sql.SQLTransientConnectionException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.*;
 
 import static com.zaxxer.hikari.util.ClockSource.currentTime;
 import static com.zaxxer.hikari.util.ClockSource.elapsedDisplayString;
@@ -97,6 +90,8 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
 
    private final ScheduledExecutorService houseKeepingExecutorService;
    private ScheduledFuture<?> houseKeeperTask;
+
+   private DnsCheckerService dnsCheckerService;
 
    /**
     * Construct a HikariPool with the specified configuration.
@@ -148,6 +143,8 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
          addConnectionExecutor.setCorePoolSize(1);
          addConnectionExecutor.setMaximumPoolSize(1);
       }
+
+      startDnsCheckerService();
    }
 
    /**
@@ -252,6 +249,11 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
          shutdownNetworkTimeoutExecutor();
          closeConnectionExecutor.shutdown();
          closeConnectionExecutor.awaitTermination(10L, SECONDS);
+
+         if(this.dnsCheckerService != null){
+            this.dnsCheckerService.close();
+            this.dnsCheckerService = null;
+         }
       }
       finally {
          logPoolState("After shutdown ");
@@ -702,6 +704,34 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
       return connectionException;
    }
 
+   /**
+    * Start Dns Checker Service.
+    */
+   private void startDnsCheckerService() {
+      if(!config.getUseDnsChecker()){
+         return;
+      }
+
+      try(Connection connection = this.getConnection()) {
+         String hostname = UtilityElf.getConnectionHostName(connection);
+         int delay = config.getDnsCheckerDelay();
+
+         this.dnsCheckerService = new DnsCheckerService(hostname, delay, new InetAddressDnsResolver());
+
+         this.dnsCheckerService.addListener((newHostAddress, oldHostAddress) -> {
+
+            logger.info("DNS Changed Old: {}, New: {}", oldHostAddress, newHostAddress);
+
+            // Evict Database Connections.
+            this.softEvictConnections();
+         });
+
+         this.dnsCheckerService.start();
+
+      } catch (Exception e) {
+         logger.error("Error on try start Dns Checker Service", e);
+      }
+   }
 
    // ***********************************************************************
    //                      Non-anonymous Inner-classes

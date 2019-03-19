@@ -89,6 +89,8 @@ public class HikariConfig implements HikariConfigMXBean
    private boolean isIsolateInternalQueries;
    private boolean isRegisterMbeans;
    private boolean isAllowPoolSuspension;
+   private boolean useDnsChecker;
+   private int dnsCheckerDelay;
    private DataSource dataSource;
    private Properties dataSourceProperties;
    private ThreadFactory threadFactory;
@@ -116,6 +118,8 @@ public class HikariConfig implements HikariConfigMXBean
       idleTimeout = IDLE_TIMEOUT;
       initializationFailTimeout = 1;
       isAutoCommit = true;
+      useDnsChecker = false;
+      dnsCheckerDelay = 30;
 
       String systemProp = System.getProperty("hikaricp.configurationFile");
       if (systemProp != null) {
@@ -548,6 +552,30 @@ public class HikariConfig implements HikariConfigMXBean
       checkIfSealed();
       this.isAllowPoolSuspension = isAllowPoolSuspension;
    }
+
+   /**
+    * Get if Pool will check any DNS changes.
+    * @return
+    */
+   public boolean getUseDnsChecker() { return useDnsChecker;}
+
+   /**
+    * Set if Pool will check any DNS changes.
+    * @param useDnsChecker
+    */
+   public void setUseDnsChecker(boolean useDnsChecker) { this.useDnsChecker = useDnsChecker;}
+
+   /**
+    * Get DNS Checker Pooling Delay.
+    * @return
+    */
+   public int getDnsCheckerDelay() { return dnsCheckerDelay; }
+
+   /**
+    * Set DNS Checker Pooling Delay.
+    * @param dnsCheckerDelay
+    */
+   public void setDnsCheckerDelay(int dnsCheckerDelay) { this.dnsCheckerDelay = dnsCheckerDelay; }
 
    /**
     * Get the pool initialization failure timeout.  See {@code #setInitializationFailTimeout(long)}
@@ -1007,6 +1035,11 @@ public class HikariConfig implements HikariConfigMXBean
       }
       else  if (idleTimeout != IDLE_TIMEOUT && idleTimeout != 0 && minIdle == maxPoolSize) {
          LOGGER.warn("{} - idleTimeout has been set but has no effect because the pool is operating as a fixed size pool.", poolName);
+      }
+
+      if(dnsCheckerDelay < 10) {
+         dnsCheckerDelay = 10;
+         LOGGER.warn("{} - dnsCheckerDelay is less than 10s, setting to default {}ms.", poolName, dnsCheckerDelay);
       }
    }
 
