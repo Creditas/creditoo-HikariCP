@@ -720,7 +720,7 @@ public final class HikariPool extends PoolBase implements HikariPoolMXBean, IBag
 
          this.dnsCheckerService.addListener((newHostAddress, oldHostAddress) -> {
 
-            logger.info("DNS Changed Old: {}, New: {}", oldHostAddress, newHostAddress);
+            logger.info("Evicting Connections - DNS has been changed.");
 
             // Evict Database Connections.
             this.softEvictConnections();

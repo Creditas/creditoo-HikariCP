@@ -45,17 +45,15 @@ public class DnsCheckerService implements Closeable, AutoCloseable {
     */
    public void start() {
 
-      try {
+      logger.info("Starting Service...");
 
-         java.security.Security.setProperty("networkaddress.cache.ttl", String.valueOf(delay));
+      java.security.Security.setProperty("networkaddress.cache.ttl", String.valueOf(delay));
 
-         this.checkDnsExecutorService.scheduleWithFixedDelay(() -> checkChanges(hostName), delay, delay, SECONDS);
+      this.checkDnsExecutorService.scheduleWithFixedDelay(() -> checkChanges(hostName), delay, delay, SECONDS);
 
-         this.isRunning = true;
+      this.isRunning = true;
 
-      } catch (Exception e){
-         logger.error("Error on try start DNS Checker", e);
-      }
+      logger.info("Service Started.");
    }
 
    /**
@@ -77,8 +75,13 @@ public class DnsCheckerService implements Closeable, AutoCloseable {
 
    @Override
    public void close() {
+
+      logger.info("Shutdown service...");
+
       this.checkDnsExecutorService.shutdown();
       this.isRunning = false;
+
+      logger.info("Service Shutdown.");
    }
 
    /**
@@ -86,28 +89,24 @@ public class DnsCheckerService implements Closeable, AutoCloseable {
     * @param hostName
     */
    private void checkChanges(String hostName){
-      try {
-         String newHostAddress = this.dnsResolver.resolve(hostName);
+      String newHostAddress = this.dnsResolver.resolve(hostName);
 
-         if(newHostAddress == null) {
-            logger.warn("DNS Checker - Inet Address not found.");
-            return;
-         }
+      if(newHostAddress == null) {
+         logger.warn("DNS Checker - Inet Address not found.");
+         return;
+      }
 
-         if(currentHostAddress == null) {
-            logger.info("DNS Checker - Current Address: {}", newHostAddress);
-            currentHostAddress = newHostAddress;
-         }
+      if(currentHostAddress == null) {
+         logger.info("DNS Checker - Current Address: {}", newHostAddress);
+         currentHostAddress = newHostAddress;
+      }
 
-         if(!currentHostAddress.equals(newHostAddress)) {
-            logger.info("DNS Checker - Address Changed from {} to {} ", currentHostAddress, newHostAddress);
+      if(!currentHostAddress.equals(newHostAddress)) {
+         logger.info("DNS Checker - Address Changed from {} to {} ", currentHostAddress, newHostAddress);
 
-            notifyListeners(newHostAddress, currentHostAddress);
+         notifyListeners(newHostAddress, currentHostAddress);
 
-            currentHostAddress = newHostAddress;
-         }
-      } catch (Exception e) {
-         logger.error("Error on try check DNS.", e);
+         currentHostAddress = newHostAddress;
       }
    }
 
@@ -119,7 +118,11 @@ public class DnsCheckerService implements Closeable, AutoCloseable {
    private void notifyListeners(String newHostAddress, String oldHostAddress) {
 
       for (DnsChangedListener listener : this.listeners) {
-         listener.changed(newHostAddress, oldHostAddress);
+         try{
+            listener.changed(newHostAddress, oldHostAddress);
+         } catch (Exception e) {
+            // Do Nothing
+         }
       }
    }
 }
